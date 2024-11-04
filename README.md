@@ -6,7 +6,11 @@ BONKbot is a revolutionary trading bot designed specifically for the Solana ecos
 
 To run this project, you will need to add the following environment variables to your .env file
 
-`CLIENT_TOKEN ` = 'MTI4...'
+```
+MONGODB_URI= "mongodb+srv://your_mongodb_url_here"
+DISCORD_TOKEN = "ABCDEF21NjM0ODc0MDIyNzE1Mw.GCah5L.Jie0NPGvN0eZU_I0fyxeFRuC0mJ0Bia7ru9Ri8"
+
+```
 
 ## Run Locally
 
