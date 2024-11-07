@@ -1,12 +1,14 @@
-const { Client, GatewayIntentBits, Partials } = require("discord.js");
 require("dotenv").config();
+const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const connectDB = require("./config/db");
 const {
   showWallet,
   createWallet,
   exportPrivateKey,
   withdrawSOL,
-  setFee, // Import setFee from walletController
+  setFee,
+  showTokenPortfolio,
+  swapToken,
 } = require("./controllers/walletController");
 
 // Connect to the database
@@ -19,18 +21,17 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages,
-    GatewayIntentBits.GuildMembers, // Allows bot to handle DMs and server messages
+    GatewayIntentBits.GuildMembers,
   ],
-  partials: [Partials.Channel], // Allows bot to receive DMs
+  partials: [Partials.Channel],
 });
 
 // Listen for messages
 client.on("messageCreate", async (msg) => {
-  // Ignore messages from bots
   if (msg.author.bot) return;
 
   const userId = msg.author.id;
-  const content = msg.content.trim(); // Trim whitespace
+  const content = msg.content.trim();
   const isDM = !msg.guild;
 
   try {
@@ -50,18 +51,16 @@ client.on("messageCreate", async (msg) => {
       }
 
       await withdrawSOL(userId, solanaWallet, amount, msg);
-    } else if (content.startsWith("/fee")) {
-      const priorityInput = content.split(" ")[1]; // Extract the input directly
-      const priorityNumber = parseFloat(priorityInput); // Attempt to parse the input as a float
+    } else if (content.startsWith("/fees")) {
+      const priorityInput = content.split(" ")[1];
+      const priorityNumber = parseFloat(priorityInput);
 
-      // Define a mapping for string inputs to their numerical values
       const priorityFees = {
         very_high: 0.01,
         high: 0.005,
         medium: 0.001,
       };
 
-      // Check if the input is a valid number and greater than 0, or a valid string option
       const priorityFee =
         !isNaN(priorityNumber) && priorityNumber > 0
           ? priorityNumber
@@ -69,15 +68,69 @@ client.on("messageCreate", async (msg) => {
 
       if (priorityFee === undefined) {
         return await msg.reply(
-          "Usage: `/fee <priority>` (e.g., a number or one of the following: very_high, high, medium)"
+          "Usage: `/fees <priority>` (e.g., a number or one of the following: very_high, high, medium)"
         );
       }
 
-      await setFee(userId, priorityFee, msg); // Call setFee function with the valid priority fee
+      await setFee(userId, priorityFee, msg);
+    } else if (content.startsWith("/portfolio")) {
+      const args = content.split(" ");
+      const tokenAddress = args[1];
+
+      if (!tokenAddress) {
+        return await msg.reply(
+          "Usage: `/portfolio <address>` to view token details."
+        );
+      }
+
+      await showTokenPortfolio(userId, tokenAddress, msg);
+    } else if (content.startsWith("/buy")) {
+      const args = content.split(" ");
+      const tokenAddress = args[1];
+      const amount = parseFloat(args[2]);
+      const slippageBps = parseInt(args[3]) || 50; // Default to 0.5% slippage if not specified
+
+      if (!tokenAddress || isNaN(amount)) {
+        return await msg.reply(
+          "Usage: `/buy <tokenAddress> <amount> <slippageBps>`"
+        );
+      }
+
+      const inputMint = "So11111111111111111111111111111111111111112"; // SOL mint address
+      await swapToken(
+        userId,
+        inputMint,
+        tokenAddress,
+        amount,
+        slippageBps,
+        msg
+      );
+
+      // Handle /sell command
+    } else if (content.startsWith("/sell")) {
+      const args = content.split(" ");
+      const tokenAddress = args[1];
+      const amount = parseFloat(args[2]);
+      const slippageBps = parseInt(args[3]) || 50; // Default to 0.5% slippage if not specified
+
+      if (!tokenAddress || isNaN(amount)) {
+        return await msg.reply(
+          "Usage: `/sell <tokenAddress> <amount> <slippageBps>`"
+        );
+      }
+
+      const outputMint = "So11111111111111111111111111111111111111112"; // SOL mint address
+      await swapToken(
+        userId,
+        tokenAddress,
+        outputMint,
+        amount,
+        slippageBps,
+        msg
+      );
     } else if (isDM) {
-      // Handle DMs with a default response for unknown commands
       await msg.reply(
-        "Unknown command. Try `/wallet show`, `/wallet new`, `/wallet export`, `/wallet withdraw`, or `/fee <priority>`."
+        "Unknown command. Try `/wallet show`, `/wallet new`, `/wallet export`, `/wallet withdraw`, `/fees <priority>`, `/portfolio <address>`, `/buy <tokenAddress> <amount> <slippageBps>`, or `/sell <tokenAddress> <amount> <slippageBps>`."
       );
     }
   } catch (error) {
@@ -88,7 +141,6 @@ client.on("messageCreate", async (msg) => {
   }
 });
 
-// Log in to Discord
 client
   .login(process.env.DISCORD_TOKEN)
   .then(() => console.log("Discord client logged in."))
